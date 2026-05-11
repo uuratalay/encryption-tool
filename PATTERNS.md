@@ -7,12 +7,12 @@
 **Nerede uygulandı:** `src/factory.py` → `AlgorithmFactory` sınıfı
 
 **Neden uygulandı:**
-Başlangıç kodunda algoritma seçimi `__init__`, `encrypt`, `decrypt` ve `export_to_file` metodlarının hepsinde if-else zincirleriyle yapılıyordu. Yeni bir algoritma eklemek için en az 4 farklı yeri değiştirmek gerekiyordu.
+Başlangıç kodunda algoritma seçimi if-else zincirleriyle yapılıyordu. Yeni algoritma eklemek 4 farklı yerde değişiklik gerektiriyordu.
 
 **Ne kazandık:**
 - Her algoritma kendi sınıfında kapsüllendi
-- Yeni algoritma eklemek = yeni sınıf yaz + `factory.register()` çağır
-- Runtime'da algoritma değiştirmek mümkün hale geldi
+- Yeni algoritma = yeni sınıf + `factory.register()`
+- Runtime'da algoritma değiştirmek mümkün
 
 ---
 
@@ -23,55 +23,45 @@ Başlangıç kodunda algoritma seçimi `__init__`, `encrypt`, `decrypt` ve `expo
 **Nerede uygulandı:** `src/adapters.py` → `VigenereAdapter`, `AtbashAdapter`
 
 **Neden uygulandı:**
-Sisteme yeni algoritmalar eklemek istedik ama bunlar farklı API'lere sahip harici kütüphanelerden geliyordu. `VigenereCryptoLib` bizim `encrypt/decrypt` yerine `encode_text/decode_text` kullanıyor. `AtbashCryptoLib` ise sadece `transform` metodu sunuyor. Bu sınıfları doğrudan kullanamıyorduk.
+Harici kütüphaneler (`VigenereCryptoLib`, `AtbashCryptoLib`) farklı API'lere sahip. Adapter, bu kütüphaneleri `EncryptionAlgorithm` arayüzüne uyduruyor.
 
-**Alternatif: Facade mı?**
-Facade karmaşık bir alt sistemi basitleştirir. Bizim sorunumuz basitleştirme değil, arayüz uyumsuzluğu — bu yüzden Adapter doğru seçim.
-
-**Ne kazandık:**
-- Harici kütüphanelerin koduna dokunmadan sisteme entegre ettik
-- `EncryptionAlgorithm` arayüzü korundu — factory'ye direkt ekleyebildik
-- İleride başka kütüphaneler de aynı yöntemle eklenebilir
-
-**Önce → Sonra:**
-
-Önce (harici kütüphane doğrudan kullanılsa):
-```python
-# Her yerde farklı API kontrolü gerekir
-if isinstance(algo, VigenereCryptoLib):
-    result = algo.encode_text(text)
-elif isinstance(algo, AtbashCryptoLib):
-    result = algo.transform(text)
-else:
-    result = algo.encrypt(text)
-```
-
-Sonra:
-```python
-# Adapter sayesinde tek bir arayüz
-result = algo.encrypt(text)  # hangi algoritma olursa olsun
-```
+**Neden Facade değil:**
+Sorun alt sistem karmaşıklığı değil, arayüz uyumsuzluğu.
 
 ### Decorator Pattern
 
 **Nerede uygulandı:** `src/decorators.py` → `LoggingDecorator`, `TimingDecorator`, `CompressionDecorator`
 
 **Neden uygulandı:**
-Algoritmalara loglama, süre ölçümü ve sıkıştırma gibi ek davranışlar eklemek istiyorduk. Bu davranışları her algoritma sınıfına ayrı ayrı yazmak kod tekrarı oluşturur ve algoritma sınıflarının sorumluluğunu artırır. Decorator ile bu davranışları bağımsız sınıflar olarak tanımlayıp istediğimiz algoritmaya runtime'da sardık.
-
-**Ne kazandık:**
-- Algoritma sınıfları temiz kaldı — sadece şifreleme/çözme işini yapıyorlar
-- Ek davranışlar isteğe bağlı ve zincirleme eklenebilir
-- Yeni bir davranış eklemek = yeni decorator sınıfı yazmak (mevcut koda dokunmaya gerek yok)
-
-**Zincirleme kullanım örneği:**
-```python
-algo = CaesarCipher(3)
-algo = LoggingDecorator(algo)      # loglama ekle
-algo = TimingDecorator(algo)       # süre ölçümü ekle
-# artık algo hem loglar, hem süre ölçer, hem şifreler
-```
+Loglama ve zamanlama gibi ek davranışlar algoritma sınıflarının sorumluluğu değil. Decorator ile bu davranışları bağımsız ve zincirleme eklenebilir hale getirdik.
 
 ---
 
-*Faz 3 tamamlandıkça güncellenecektir.*
+## Faz 3 — Behavioral Örüntüler
+
+### Strategy Pattern
+
+**Nerede uygulandı:** `src/strategy.py` → `EncryptionStrategy` sınıfı
+
+**Neden uygulandı:**
+Factory algoritma nesnesini **üretir** ama nasıl kullanılacağını yönetmez. Strategy bir "context" sınıfı olarak algoritmayı kapsülleyip runtime'da değiştirmeyi sağlar. Encryptor artık hiçbir algoritmayı doğrudan bilmiyor — Strategy'ye delege ediyor.
+
+**OCP gösterimi:**
+Yeni bir algoritma eklemek için mevcut hiçbir dosyayı değiştirmek gerekmiyor:
+1. `EncryptionAlgorithm`'den türeyen yeni sınıf yaz
+2. `factory.register("yeni_algo", lambda p: YeniAlgo())` çağır
+3. `enc.set_algorithm("yeni_algo")` ile kullan
+
+Mevcut kodda tek satır değişiklik yok — sistem genişlemeye açık, değişikliğe kapalı.
+
+### Observer Pattern
+
+**Nerede uygulandı:** `src/observers.py` → `EncryptionEventManager`, `ConsoleLogger`, `StatisticsCollector`
+
+**Neden uygulandı:**
+Şifreleme olaylarına farklı bileşenlerin bağımsızca tepki vermesi gerekiyor. Decorator tek bir algoritmayı sarar (algoritma seviyesi), Observer ise tüm sistemi dinler (sistem seviyesi). Yeni bir dinleyici eklemek için `EncryptionObserver`'dan türetip `subscribe()` çağırmak yeterli.
+
+**Ne kazandık:**
+- Loglama, istatistik toplama gibi yan etkiler Encryptor'dan bağımsız
+- Dinleyiciler birbirinden habersiz çalışıyor
+- Yeni dinleyici eklemek mevcut kodu değiştirmiyor (OCP)
