@@ -1,12 +1,13 @@
 from src.factory import AlgorithmFactory
+from src.decorators import LoggingDecorator, TimingDecorator, CompressionDecorator
 
 
 class Encryptor:
     """
     Şifreleme aracı.
     
-    Artık algoritmalar Factory Method ile üretiliyor.
-    Encryptor sadece kullanıcı ile algoritma arasında köprü kuruyor.
+    Factory Method ile algoritma üretir.
+    Decorator pattern ile ek davranışlar (loglama, zamanlama, sıkıştırma) ekler.
     """
 
     def __init__(self):
@@ -14,9 +15,26 @@ class Encryptor:
         self.algorithm = None
         self.log = []
 
-    def set_algorithm(self, name, params=None):
-        """Aktif algoritmayı değiştirir."""
-        self.algorithm = self.factory.create(name, params)
+    def set_algorithm(self, name, params=None, logging=False, timing=False, compression=False):
+        """
+        Aktif algoritmayı değiştirir.
+        
+        Decorator'lar ile ek davranışlar eklenebilir:
+        - logging: İşlemleri loglar
+        - timing: Süre ölçer
+        - compression: Sıkıştırma ekler
+        """
+        algo = self.factory.create(name, params)
+
+        # decorator'ları zincirleme sar
+        if compression:
+            algo = CompressionDecorator(algo)
+        if logging:
+            algo = LoggingDecorator(algo)
+        if timing:
+            algo = TimingDecorator(algo)
+
+        self.algorithm = algo
 
     def encrypt(self, text):
         """Metni aktif algoritma ile şifreler."""
@@ -53,7 +71,7 @@ class Encryptor:
 
 
 def main():
-    print("=== Şifreleme Aracı ===")
+    print("=== Şifreleme Aracı v2 ===")
 
     enc = Encryptor()
     algorithms = enc.get_available_algorithms()
@@ -66,8 +84,14 @@ def main():
         params["shift"] = int(input("Shift değeri girin: "))
     elif algorithm == "xor":
         params["key"] = input("XOR anahtarı girin: ")
+    elif algorithm == "vigenere":
+        params["keyword"] = input("Vigenere anahtar kelime: ")
 
-    enc.set_algorithm(algorithm, params)
+    # Decorator seçenekleri
+    use_log = input("Loglama açık olsun mu? (e/h): ").strip().lower() == "e"
+    use_timer = input("Süre ölçümü açık olsun mu? (e/h): ").strip().lower() == "e"
+
+    enc.set_algorithm(algorithm, params, logging=use_log, timing=use_timer)
 
     while True:
         print("\n1. Şifrele")
@@ -97,7 +121,9 @@ def main():
                 new_params["shift"] = int(input("Shift değeri: "))
             elif new_algo == "xor":
                 new_params["key"] = input("XOR anahtarı: ")
-            enc.set_algorithm(new_algo, new_params)
+            elif new_algo == "vigenere":
+                new_params["keyword"] = input("Vigenere anahtar kelime: ")
+            enc.set_algorithm(new_algo, new_params, logging=use_log, timing=use_timer)
             print(f"Algoritma değiştirildi: {new_algo}")
         elif choice == "5":
             print("Çıkış yapılıyor...")
