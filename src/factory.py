@@ -3,6 +3,7 @@ from src.algorithms.base64_cipher import Base64Cipher
 from src.algorithms.xor import XORCipher
 from src.algorithms.reverse import ReverseCipher
 from src.algorithms.hashing import MD5Hash, SHA256Hash
+from src.adapters import VigenereAdapter, AtbashAdapter
 
 
 class AlgorithmFactory:
@@ -13,12 +14,12 @@ class AlgorithmFactory:
     1. EncryptionAlgorithm'den türeyen yeni sınıf yaz
     2. Bu factory'ye register et
     
-    Böylece mevcut kodu değiştirmeden yeni algoritma eklenebilir.
+    Adapter pattern ile eklenen harici kütüphaneler de
+    aynı factory üzerinden üretilebilir.
     """
 
     def __init__(self):
         self._creators = {}
-        # varsayılan algoritmaları kaydet
         self._register_defaults()
 
     def _register_defaults(self):
@@ -29,6 +30,9 @@ class AlgorithmFactory:
         self.register("reverse", lambda params: ReverseCipher())
         self.register("hash-md5", lambda params: MD5Hash())
         self.register("hash-sha256", lambda params: SHA256Hash())
+        # Adapter ile eklenen harici algoritmalar
+        self.register("vigenere", lambda params: VigenereAdapter(params.get("keyword", "SECRET")))
+        self.register("atbash", lambda params: AtbashAdapter())
 
     def register(self, name, creator_fn):
         """Yeni bir algoritma kaydeder."""
@@ -39,14 +43,11 @@ class AlgorithmFactory:
         Algoritma adına göre nesne üretir.
         
         Args:
-            name: Algoritma adı (caesar, base64, xor, vb.)
+            name: Algoritma adı
             params: Algoritmaya özel parametreler (dict)
         
         Returns:
             EncryptionAlgorithm nesnesi
-        
-        Raises:
-            ValueError: Bilinmeyen algoritma adı
         """
         if params is None:
             params = {}
