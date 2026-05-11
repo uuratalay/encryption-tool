@@ -1,69 +1,68 @@
 from src.factory import AlgorithmFactory
+from src.strategy import EncryptionStrategy
+from src.observers import EncryptionEventManager, ConsoleLogger, StatisticsCollector
 from src.decorators import LoggingDecorator, TimingDecorator, CompressionDecorator
 
 
 class Encryptor:
     """
-    Şifreleme aracı.
+    Şifreleme Aracı — Tüm örüntülerin bir arada çalıştığı ana sınıf.
     
-    Factory Method ile algoritma üretir.
-    Decorator pattern ile ek davranışlar (loglama, zamanlama, sıkıştırma) ekler.
+    Kullanılan örüntüler:
+    - Factory Method: Algoritma nesnelerini üretir
+    - Strategy: Runtime'da algoritma değiştirme
+    - Observer: Olaylara tepki veren dinleyiciler (log, istatistik)
+    - Decorator: Ek davranışlar (loglama, zamanlama, sıkıştırma)
+    - Adapter: Harici kütüphaneleri ortak arayüze uyduruyor
     """
 
     def __init__(self):
         self.factory = AlgorithmFactory()
-        self.algorithm = None
-        self.log = []
+        self.strategy = EncryptionStrategy()
+        self.event_manager = EncryptionEventManager()
 
-    def set_algorithm(self, name, params=None, logging=False, timing=False, compression=False):
+    def set_algorithm(self, name, params=None, timing=False, compression=False):
         """
-        Aktif algoritmayı değiştirir.
-        
-        Decorator'lar ile ek davranışlar eklenebilir:
-        - logging: İşlemleri loglar
-        - timing: Süre ölçer
-        - compression: Sıkıştırma ekler
+        Aktif algoritmayı değiştirir (Strategy pattern).
+        İsteğe bağlı decorator'lar eklenebilir.
         """
         algo = self.factory.create(name, params)
 
-        # decorator'ları zincirleme sar
         if compression:
             algo = CompressionDecorator(algo)
-        if logging:
-            algo = LoggingDecorator(algo)
         if timing:
             algo = TimingDecorator(algo)
 
-        self.algorithm = algo
+        self.strategy.set_strategy(algo)
 
     def encrypt(self, text):
-        """Metni aktif algoritma ile şifreler."""
-        if not self.algorithm:
+        """Metni şifreler ve observer'lara bildirir."""
+        algo = self.strategy.get_strategy()
+        if not algo:
             raise RuntimeError("Önce bir algoritma seçin: set_algorithm()")
-        result = self.algorithm.encrypt(text)
-        self.log.append(f"[{self.algorithm.get_name()}] Şifrelendi: {text[:20]}...")
-        return result
+
+        try:
+            result = self.strategy.execute_encrypt(text)
+            self.event_manager.notify_encrypt(algo.get_name(), text, result)
+            return result
+        except Exception as e:
+            self.event_manager.notify_error(algo.get_name(), str(e))
+            raise
 
     def decrypt(self, text):
-        """Şifreli metni aktif algoritma ile çözer."""
-        if not self.algorithm:
+        """Şifreli metni çözer ve observer'lara bildirir."""
+        algo = self.strategy.get_strategy()
+        if not algo:
             raise RuntimeError("Önce bir algoritma seçin: set_algorithm()")
+
         try:
-            result = self.algorithm.decrypt(text)
-            self.log.append(f"[{self.algorithm.get_name()}] Çözüldü: {text[:20]}...")
+            result = self.strategy.execute_decrypt(text)
+            self.event_manager.notify_decrypt(algo.get_name(), text, result)
             return result
         except NotImplementedError as e:
-            self.log.append(f"[{self.algorithm.get_name()}] Çözme başarısız: {e}")
+            self.event_manager.notify_error(algo.get_name(), str(e))
             print(f"HATA: {e}")
             return None
-
-    def show_log(self):
-        """İşlem geçmişini gösterir."""
-        if not self.log:
-            print("Henüz işlem yapılmadı.")
-        else:
-            for entry in self.log:
-                print(entry)
 
     def get_available_algorithms(self):
         """Kullanılabilir algoritmaları listeler."""
@@ -71,9 +70,16 @@ class Encryptor:
 
 
 def main():
-    print("=== Şifreleme Aracı v2 ===")
+    print("=== Şifreleme Aracı v3 (Final) ===")
 
     enc = Encryptor()
+
+    # Observer'ları ekle
+    logger = ConsoleLogger()
+    stats = StatisticsCollector()
+    enc.event_manager.subscribe(logger)
+    enc.event_manager.subscribe(stats)
+
     algorithms = enc.get_available_algorithms()
     print(f"Algoritmalar: {', '.join(algorithms)}")
 
@@ -87,17 +93,14 @@ def main():
     elif algorithm == "vigenere":
         params["keyword"] = input("Vigenere anahtar kelime: ")
 
-    # Decorator seçenekleri
-    use_log = input("Loglama açık olsun mu? (e/h): ").strip().lower() == "e"
     use_timer = input("Süre ölçümü açık olsun mu? (e/h): ").strip().lower() == "e"
-
-    enc.set_algorithm(algorithm, params, logging=use_log, timing=use_timer)
+    enc.set_algorithm(algorithm, params, timing=use_timer)
 
     while True:
         print("\n1. Şifrele")
         print("2. Çöz")
-        print("3. İşlem Geçmişi")
-        print("4. Algoritma Değiştir")
+        print("3. Algoritma Değiştir")
+        print("4. İstatistikler")
         print("5. Çıkış")
 
         choice = input("Seçiminiz: ").strip()
@@ -112,8 +115,6 @@ def main():
             if result:
                 print(f"Sonuç: {result}")
         elif choice == "3":
-            enc.show_log()
-        elif choice == "4":
             print(f"Algoritmalar: {', '.join(algorithms)}")
             new_algo = input("Yeni algoritma: ").strip().lower()
             new_params = {}
@@ -123,8 +124,15 @@ def main():
                 new_params["key"] = input("XOR anahtarı: ")
             elif new_algo == "vigenere":
                 new_params["keyword"] = input("Vigenere anahtar kelime: ")
-            enc.set_algorithm(new_algo, new_params, logging=use_log, timing=use_timer)
+            enc.set_algorithm(new_algo, new_params, timing=use_timer)
             print(f"Algoritma değiştirildi: {new_algo}")
+        elif choice == "4":
+            report = stats.get_report()
+            print(f"\n--- İstatistikler ---")
+            print(f"Toplam şifreleme: {report['toplam_sifreleme']}")
+            print(f"Toplam çözme: {report['toplam_cozme']}")
+            print(f"Toplam hata: {report['toplam_hata']}")
+            print(f"Algoritma kullanımı: {report['algoritma_kullanim']}")
         elif choice == "5":
             print("Çıkış yapılıyor...")
             break
