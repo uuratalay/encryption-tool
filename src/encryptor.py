@@ -1,175 +1,106 @@
-import base64
-import hashlib
+from src.factory import AlgorithmFactory
+from src.strategy import EncryptionStrategy
+from src.observers import EncryptionEventManager, ConsoleLogger, StatisticsCollector
+from src.decorators import LoggingDecorator, TimingDecorator, CompressionDecorator
 
 
 class Encryptor:
-    """Şifreleme aracı - tüm algoritmalar tek sınıfta."""
+    """
+    Şifreleme Aracı — Tüm örüntülerin bir arada çalıştığı ana sınıf.
+    
+    Kullanılan örüntüler:
+    - Factory Method: Algoritma nesnelerini üretir
+    - Strategy: Runtime'da algoritma değiştirme
+    - Observer: Olaylara tepki veren dinleyiciler (log, istatistik)
+    - Decorator: Ek davranışlar (loglama, zamanlama, sıkıştırma)
+    - Adapter: Harici kütüphaneleri ortak arayüze uyduruyor
+    """
 
-    def __init__(self, algorithm, key=None):
-        self.algorithm = algorithm
-        self.key = key
-        self.log = []
+    def __init__(self):
+        self.factory = AlgorithmFactory()
+        self.strategy = EncryptionStrategy()
+        self.event_manager = EncryptionEventManager()
 
-        # algoritma kontrolü
-        if algorithm == "caesar":
-            if key is None:
-                self.key = 3
-            elif not isinstance(key, int):
-                raise ValueError("Caesar için key tam sayı olmalı")
-        elif algorithm == "base64":
-            pass  # key gerekmez
-        elif algorithm == "xor":
-            if key is None:
-                raise ValueError("XOR için key gerekli")
-        elif algorithm == "reverse":
-            pass
-        elif algorithm == "hash-md5":
-            pass
-        elif algorithm == "hash-sha256":
-            pass
-        else:
-            raise ValueError(f"Desteklenmeyen algoritma: {algorithm}")
+    def set_algorithm(self, name, params=None, timing=False, compression=False):
+        """
+        Aktif algoritmayı değiştirir (Strategy pattern).
+        İsteğe bağlı decorator'lar eklenebilir.
+        """
+        algo = self.factory.create(name, params)
+
+        if compression:
+            algo = CompressionDecorator(algo)
+        if timing:
+            algo = TimingDecorator(algo)
+
+        self.strategy.set_strategy(algo)
 
     def encrypt(self, text):
-        """Metni şifreler."""
-        if self.algorithm == "caesar":
-            result = ""
-            for char in text:
-                if char.isalpha():
-                    shift = self.key
-                    if char.isupper():
-                        result += chr((ord(char) - 65 + shift) % 26 + 65)
-                    else:
-                        result += chr((ord(char) - 97 + shift) % 26 + 97)
-                else:
-                    result += char
-            self.log.append(f"[caesar] Şifrelendi: {text[:20]}...")
-            return result
+        """Metni şifreler ve observer'lara bildirir."""
+        algo = self.strategy.get_strategy()
+        if not algo:
+            raise RuntimeError("Önce bir algoritma seçin: set_algorithm()")
 
-        elif self.algorithm == "base64":
-            result = base64.b64encode(text.encode()).decode()
-            self.log.append(f"[base64] Şifrelendi: {text[:20]}...")
+        try:
+            result = self.strategy.execute_encrypt(text)
+            self.event_manager.notify_encrypt(algo.get_name(), text, result)
             return result
-
-        elif self.algorithm == "xor":
-            result = ""
-            for i, char in enumerate(text):
-                key_char = self.key[i % len(self.key)]
-                result += chr(ord(char) ^ ord(key_char))
-            self.log.append(f"[xor] Şifrelendi: {text[:20]}...")
-            return result
-
-        elif self.algorithm == "reverse":
-            result = text[::-1]
-            self.log.append(f"[reverse] Şifrelendi: {text[:20]}...")
-            return result
-
-        elif self.algorithm == "hash-md5":
-            result = hashlib.md5(text.encode()).hexdigest()
-            self.log.append(f"[md5] Hash oluşturuldu: {text[:20]}...")
-            return result
-
-        elif self.algorithm == "hash-sha256":
-            result = hashlib.sha256(text.encode()).hexdigest()
-            self.log.append(f"[sha256] Hash oluşturuldu: {text[:20]}...")
-            return result
+        except Exception as e:
+            self.event_manager.notify_error(algo.get_name(), str(e))
+            raise
 
     def decrypt(self, text):
-        """Şifreyi çözer."""
-        if self.algorithm == "caesar":
-            result = ""
-            for char in text:
-                if char.isalpha():
-                    shift = self.key
-                    if char.isupper():
-                        result += chr((ord(char) - 65 - shift) % 26 + 65)
-                    else:
-                        result += chr((ord(char) - 97 - shift) % 26 + 97)
-                else:
-                    result += char
-            self.log.append(f"[caesar] Çözüldü: {text[:20]}...")
-            return result
+        """Şifreli metni çözer ve observer'lara bildirir."""
+        algo = self.strategy.get_strategy()
+        if not algo:
+            raise RuntimeError("Önce bir algoritma seçin: set_algorithm()")
 
-        elif self.algorithm == "base64":
-            result = base64.b64decode(text.encode()).decode()
-            self.log.append(f"[base64] Çözüldü: {text[:20]}...")
+        try:
+            result = self.strategy.execute_decrypt(text)
+            self.event_manager.notify_decrypt(algo.get_name(), text, result)
             return result
-
-        elif self.algorithm == "xor":
-            # xor kendi tersini alır
-            result = ""
-            for i, char in enumerate(text):
-                key_char = self.key[i % len(self.key)]
-                result += chr(ord(char) ^ ord(key_char))
-            self.log.append(f"[xor] Çözüldü: {text[:20]}...")
-            return result
-
-        elif self.algorithm == "reverse":
-            result = text[::-1]
-            self.log.append(f"[reverse] Çözüldü: {text[:20]}...")
-            return result
-
-        elif self.algorithm == "hash-md5" or self.algorithm == "hash-sha256":
-            print("HATA: Hash fonksiyonları geri çözülemez!")
-            self.log.append(f"[{self.algorithm}] Çözme denemesi başarısız")
+        except NotImplementedError as e:
+            self.event_manager.notify_error(algo.get_name(), str(e))
+            print(f"HATA: {e}")
             return None
 
-    def show_log(self):
-        """İşlem geçmişini gösterir."""
-        if len(self.log) == 0:
-            print("Henüz işlem yapılmadı.")
-        else:
-            for entry in self.log:
-                print(entry)
-
-    def export_to_file(self, text, filename):
-        """Sonucu dosyaya yazar."""
-        if self.algorithm == "caesar":
-            with open(filename, "w") as f:
-                f.write(f"Algoritma: Caesar (shift={self.key})\n")
-                f.write(f"Sonuç: {text}\n")
-        elif self.algorithm == "base64":
-            with open(filename, "w") as f:
-                f.write(f"Algoritma: Base64\n")
-                f.write(f"Sonuç: {text}\n")
-        elif self.algorithm == "xor":
-            with open(filename, "w") as f:
-                f.write(f"Algoritma: XOR\n")
-                f.write(f"Sonuç: {text}\n")
-        elif self.algorithm == "reverse":
-            with open(filename, "w") as f:
-                f.write(f"Algoritma: Reverse\n")
-                f.write(f"Sonuç: {text}\n")
-        elif self.algorithm == "hash-md5":
-            with open(filename, "w") as f:
-                f.write(f"Algoritma: MD5\n")
-                f.write(f"Sonuç: {text}\n")
-        elif self.algorithm == "hash-sha256":
-            with open(filename, "w") as f:
-                f.write(f"Algoritma: SHA-256\n")
-                f.write(f"Sonuç: {text}\n")
-        self.log.append(f"Dosyaya yazıldı: {filename}")
+    def get_available_algorithms(self):
+        """Kullanılabilir algoritmaları listeler."""
+        return self.factory.get_available()
 
 
 def main():
-    print("=== Şifreleme Aracı ===")
-    print("Algoritmalar: caesar, base64, xor, reverse, hash-md5, hash-sha256")
+    print("=== Şifreleme Aracı v3 (Final) ===")
+
+    enc = Encryptor()
+
+    # Observer'ları ekle
+    logger = ConsoleLogger()
+    stats = StatisticsCollector()
+    enc.event_manager.subscribe(logger)
+    enc.event_manager.subscribe(stats)
+
+    algorithms = enc.get_available_algorithms()
+    print(f"Algoritmalar: {', '.join(algorithms)}")
 
     algorithm = input("Algoritma seçin: ").strip().lower()
 
-    key = None
+    params = {}
     if algorithm == "caesar":
-        key = int(input("Shift değeri girin: "))
+        params["shift"] = int(input("Shift değeri girin: "))
     elif algorithm == "xor":
-        key = input("XOR anahtarı girin: ")
+        params["key"] = input("XOR anahtarı girin: ")
+    elif algorithm == "vigenere":
+        params["keyword"] = input("Vigenere anahtar kelime: ")
 
-    enc = Encryptor(algorithm, key)
+    use_timer = input("Süre ölçümü açık olsun mu? (e/h): ").strip().lower() == "e"
+    enc.set_algorithm(algorithm, params, timing=use_timer)
 
     while True:
         print("\n1. Şifrele")
         print("2. Çöz")
-        print("3. İşlem Geçmişi")
-        print("4. Dosyaya Kaydet")
+        print("3. Algoritma Değiştir")
+        print("4. İstatistikler")
         print("5. Çıkış")
 
         choice = input("Seçiminiz: ").strip()
@@ -184,12 +115,24 @@ def main():
             if result:
                 print(f"Sonuç: {result}")
         elif choice == "3":
-            enc.show_log()
+            print(f"Algoritmalar: {', '.join(algorithms)}")
+            new_algo = input("Yeni algoritma: ").strip().lower()
+            new_params = {}
+            if new_algo == "caesar":
+                new_params["shift"] = int(input("Shift değeri: "))
+            elif new_algo == "xor":
+                new_params["key"] = input("XOR anahtarı: ")
+            elif new_algo == "vigenere":
+                new_params["keyword"] = input("Vigenere anahtar kelime: ")
+            enc.set_algorithm(new_algo, new_params, timing=use_timer)
+            print(f"Algoritma değiştirildi: {new_algo}")
         elif choice == "4":
-            text = input("Kaydedilecek metin: ")
-            filename = input("Dosya adı: ")
-            enc.export_to_file(text, filename)
-            print(f"{filename} dosyasına kaydedildi.")
+            report = stats.get_report()
+            print(f"\n--- İstatistikler ---")
+            print(f"Toplam şifreleme: {report['toplam_sifreleme']}")
+            print(f"Toplam çözme: {report['toplam_cozme']}")
+            print(f"Toplam hata: {report['toplam_hata']}")
+            print(f"Algoritma kullanımı: {report['algoritma_kullanim']}")
         elif choice == "5":
             print("Çıkış yapılıyor...")
             break
