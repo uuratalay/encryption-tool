@@ -99,3 +99,13 @@ python -m pytest tests/ -v
 - **SHA-256** — SHA-256 hash (tek yönlü)
 - **Vigenere** — Vigenere şifreleme (Adapter ile entegre)
 - **Atbash** — Atbash şifreleme (Adapter ile entegre)
+- ## Faz Geçmişi
+
+| Faz | Kapsam | Uygulanan Pattern |
+|-----|--------|-------------------|
+| **Faz 0** | Başlangıç kodunun analizi, sorun tespiti | — |
+| **Faz 1** | Nesne yaratma sorumluluğunun merkezileştirilmesi | Factory Method |
+| **Faz 2** | Harici kütüphane entegrasyonu ve ek davranışlar | Adapter + Decorator |
+| **Faz 3** | Runtime algoritma değişimi, olay sistemi, CI | Strategy + Observer |
+
+Detaylı UML diyagramları için: [`docs/`](docs/)
